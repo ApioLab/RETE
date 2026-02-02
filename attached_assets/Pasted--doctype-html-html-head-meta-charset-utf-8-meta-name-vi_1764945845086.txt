@@ -1,0 +1,729 @@
+<!doctype html>
+<html>
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ReteToken Console</title>
+    <style>
+        body {
+            font-family: system-ui, Arial;
+            max-width: 1000px;
+            margin: 16px auto;
+        }
+
+        h1,
+        h2 {
+            margin: 8px 0;
+        }
+
+        label {
+            display: block;
+            margin-top: 10px;
+        }
+
+        input,
+        button,
+        select,
+        textarea {
+            padding: 8px;
+            font-size: 14px;
+        }
+
+        .row {
+            margin: 8px 0;
+        }
+
+        .card {
+            border: 1px solid #ddd;
+            border-radius: 12px;
+            padding: 12px;
+            margin: 12px 0;
+        }
+
+        pre {
+            background: #f6f8fa;
+            padding: 12px;
+            overflow: auto;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 12px;
+        }
+
+        @media (min-width: 900px) {
+            .grid {
+                grid-template-columns: 1fr 1fr;
+            }
+        }
+
+        .muted {
+            color: #666;
+            font-size: 12px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th,
+        td {
+            text-align: left;
+            padding: 8px;
+            border-bottom: 1px solid #eee;
+        }
+
+        th {
+            background: #fafafa;
+        }
+
+        .addr {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.2/dist/ethers.umd.min.js"></script>
+</head>
+
+<body>
+    <h1>ReteToken Console</h1>
+
+    <div class="card">
+        <h2>Connessioni</h2>
+        <div class="row">
+            <label>API base</label>
+            <input id="apiBase" style="width: 100%;" value="http://localhost:3000" />
+        </div>
+        <div class="row">
+            <button id="connect">Connect Wallet</button>
+            <span id="account" class="muted"></span>
+        </div>
+        <div class="row">
+            <label>Factory address</label>
+            <input id="factory" placeholder="0x..." style="width: 100%;" />
+        </div>
+        <div class="row">
+            <label>Token address corrente</label>
+            <input id="token" placeholder="0x..." style="width: 100%;" />
+        </div>
+        <div class="row">
+            <button id="loadConfig">Carica config token</button>
+        </div>
+        <pre id="out"></pre>
+    </div>
+
+    <div class="card">
+        <h2>Stato</h2>
+        <div class="row">
+            <label>Indirizzo da monitorare</label>
+            <input id="watch_addr" placeholder="0x..." style="width: 100%;" />
+        </div>
+        <div class="row">
+            <button id="addWatch">Aggiungi indirizzo</button>
+            <button id="refreshStatus">Aggiorna stato</button>
+        </div>
+        <div class="row muted">
+            La colonna Allowance indica l autorizzazione verso l AdminSpender del token corrente
+        </div>
+        <table id="statusTable">
+            <thead>
+                <tr>
+                    <th>Address</th>
+                    <th>Balance</th>
+                    <th>Allowance verso Admin</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+
+    <div class="grid">
+        <div class="card">
+            <h2>1. Crea token di comunità</h2>
+            <label>Nome</label><input id="new_name" placeholder="Community A" />
+            <label>Simbolo</label><input id="new_symbol" placeholder="RTA" />
+            <label>Owner coordinatore</label><input id="new_owner" placeholder="0xCoordinator" />
+            <label>Admin spender</label><input id="new_admin" placeholder="0xAdmin" />
+            <div class="row"><button id="createToken">Crea token</button></div>
+        </div>
+
+        <div class="card">
+            <h2>2bis. Mint con firma del Coordinatore</h2>
+            <label>Signer coordinatore</label><input id="mws_signer" placeholder="0xCoordinator" />
+            <label>Destinatario</label><input id="mws_to" placeholder="0xRecipient" />
+            <label>Importo umano</label><input id="mws_amount" placeholder="1000" />
+            <label>Scadenza in minuti</label><input id="mws_mins" type="number" value="30" />
+            <div class="row"><button id="mintWithSigBtn">Firma e mint</button></div>
+            <div class="row muted">Connetti il wallet del Coordinatore e firma, il server paga il gas</div>
+        </div>
+
+        <div class="card">
+            <h2>3bis. Distribuzione coordinatore con permit</h2>
+            <label>Utente 1</label><input id="cp_u1" placeholder="0xUser1" />
+            <label>Utente 2</label><input id="cp_u2" placeholder="0xUser2" />
+            <label>Importo per ciascuno</label><input id="cp_amount_each" placeholder="500" />
+            <div class="row">
+                <button id="cp_send_both">Firma due permit e invia a entrambi</button>
+            </div>
+            <div class="row">
+                <button id="cp_send_u1">Solo User 1</button>
+                <button id="cp_send_u2">Solo User 2</button>
+            </div>
+            <div class="row muted">Connetti il wallet del Coordinatore e firma, lo spender Admin esegue transferFrom
+            </div>
+        </div>
+
+
+        <div class="card">
+            <h2>4. Utenti trasferiscono al service provider con permit</h2>
+            <label>Service provider</label><input id="sp" placeholder="0xServiceProvider" />
+            <label>Importo umano da inviare</label><input id="sp_amount" placeholder="250" />
+            <div class="row">
+                <button id="permitUser1">User 1 firma permit e invia</button>
+            </div>
+            <div class="row">
+                <button id="permitUser2">User 2 firma permit e invia</button>
+            </div>
+            <div class="row muted">Connetti il wallet di ciascun utente e premi il relativo pulsante</div>
+        </div>
+
+        <div class="card">
+            <h2>5ter. Burn del Coordinatore con firma</h2>
+            <label>Signer Coordinatore</label><input id="bws_signer" placeholder="0xCoordinator" />
+            <label>Owner da cui bruciare</label><input id="bws_from" placeholder="0xHolder" />
+            <label>Importo umano da bruciare</label><input id="bws_amount" placeholder="100" />
+            <label>Scadenza in minuti</label><input id="bws_mins" type="number" value="30" />
+            <div class="row"><button id="burnWithSigBtn">Firma e brucia</button></div>
+            <div class="row muted">Connetti il wallet del Coordinatore, firma off chain, il server paga il gas</div>
+        </div>
+
+        <div class="card">
+            <h2>6. Leve coordinatore</h2>
+            <div class="row">
+                <button id="pauseMint">Pausa mint</button>
+                <button id="resumeMint">Riprendi mint</button>
+            </div>
+            <div class="row">
+                <button id="enableAdminBurn">Abilita admin burn</button>
+                <button id="disableAdminBurn">Disabilita admin burn</button>
+            </div>
+            <div class="row">
+                <label>Admin burn singolo</label>
+                <input id="ab_from" placeholder="0xHolder" />
+                <input id="ab_amount" placeholder="100" />
+                <button id="adminBurnBtn">Admin burn</button>
+            </div>
+            <div class="row">
+                <label>Admin batch burn</label>
+                <textarea id="ab_list" rows="4" style="width:100%;" placeholder='[
+  {"holder":"0xUser1","amount":"250"},
+  {"holder":"0xUser2","amount":"250"},
+  {"holder":"0xSP","amount":"500"}
+]'></textarea>
+                <button id="adminBatchBurnBtn">Admin batch burn</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // choose injected provider, prefer Rainbow if available
+        async function signBurnAuthorization(signerAddr, from, amountWei, deadlineSec) {
+            if (!cfg) await loadConfig();
+
+            const eth = getInjectedProvider();
+            if (!eth) throw new Error("No injected provider");
+            const currentHex = await eth.request({ method: "eth_chainId" });
+            const currentId = parseInt(currentHex, 16);
+            const chainIdForDomain = Number(cfg.chainId && cfg.chainId > 0 ? cfg.chainId : currentId);
+            await ensureNetwork(chainIdForDomain);
+
+            const provider = new ethers.BrowserProvider(eth);
+            const signer = await provider.getSigner();
+            const addr = await signer.getAddress();
+            if (addr.toLowerCase() !== signerAddr.toLowerCase()) {
+                throw new Error("Wallet connesso diverso dal signer");
+            }
+
+            const tokenRead = new ethers.Contract(cfg.token, [
+                "function burnNonces(address) view returns (uint256)"
+            ], provider);
+            const nonce = await tokenRead.burnNonces(signerAddr);
+
+            const domain = {
+                name: cfg.name,
+                version: "1",
+                chainId: chainIdForDomain,
+                verifyingContract: cfg.token
+            };
+            const types = {
+                BurnAuthorization: [
+                    { name: "signer", type: "address" },
+                    { name: "from", type: "address" },
+                    { name: "amount", type: "uint256" },
+                    { name: "nonce", type: "uint256" },
+                    { name: "deadline", type: "uint256" }
+                ]
+            };
+            const message = {
+                signer: signerAddr,
+                from,
+                amount: amountWei,
+                nonce,
+                deadline: BigInt(deadlineSec)
+            };
+
+            const signature = await signer.signTypedData(domain, types, message);
+            const sig = ethers.Signature.from(signature);
+            return { v: sig.v, r: sig.r, s: sig.s, nonce: nonce.toString(), deadline: String(deadlineSec) };
+        }
+        function getInjectedProvider() {
+            const eth = window.ethereum;
+            if (!eth) return null;
+            if (Array.isArray(eth.providers) && eth.providers.length > 0) {
+                const rainbow = eth.providers.find(p => p.isRainbow);
+                return rainbow || eth.providers[0];
+            }
+            return eth;
+        }
+
+        const out = document.getElementById("out");
+        const $ = (id) => document.getElementById(id);
+
+        let cfg = null;
+        let currentAccount = null;
+        let watchList = [];
+
+        function log(x) { out.textContent = typeof x === "string" ? x : JSON.stringify(x, null, 2); }
+        function api(path) { return ($("apiBase").value || "").replace(/\/+$/, "") + path; }
+        function tokenPath(path) { return `/token/${$("token").value}${path}`; }
+        function isAddr(a) { try { return ethers.isAddress(a); } catch { return false; } }
+
+        async function connect() {
+            const eth = getInjectedProvider();
+            if (!eth) { alert("Installa Rainbow o un wallet compatibile"); return; }
+            const accounts = await eth.request({ method: "eth_requestAccounts" });
+            currentAccount = accounts[0];
+            $("account").textContent = currentAccount;
+        }
+
+        async function ensureNetwork(chainId) {
+            const eth = getInjectedProvider();
+            if (!eth) return;
+            if (!chainId || Number(chainId) <= 0) return; // <— evita switch se il server non ha ancora dato un chainId valido
+            const current = await eth.request({ method: "eth_chainId" });
+            const want = "0x" + Number(chainId).toString(16);
+            if (current !== want) {
+                await eth.request({ method: "wallet_switchEthereumChain", params: [{ chainId: want }] });
+            }
+        }
+
+        async function loadConfig() {
+            if (!$("token").value) { log("Inserisci il token"); return; }
+            const res = await fetch(api(tokenPath("/config")));
+            const raw = await res.json();
+            cfg = {
+                token: $("token").value,
+                name: raw.name,
+                symbol: raw.symbol,
+                decimals: Number(raw.decimals),
+                chainId: raw.chainId || 0,
+                adminSpender: raw.adminSpender
+            };
+            log(cfg);
+        }
+
+        async function signPermit(owner, spender, value, deadlineSec) {
+            if (!cfg) await loadConfig();
+            await ensureNetwork(cfg.chainId);
+            const eth = getInjectedProvider();
+            if (!eth) throw new Error("No injected provider");
+            const provider = new ethers.BrowserProvider(eth);
+            const signer = await provider.getSigner();
+            if (owner.toLowerCase() !== (await signer.getAddress()).toLowerCase()) {
+                throw new Error("Il wallet connesso non corrisponde al campo owner");
+            }
+            const token = new ethers.Contract(cfg.token, [
+                "function name() view returns (string)",
+                "function nonces(address) view returns (uint256)"
+            ], signer);
+            const nonce = await token.nonces(owner);
+            const domain = { name: cfg.name, version: "1", chainId: Number(cfg.chainId), verifyingContract: cfg.token };
+            const types = {
+                Permit: [
+                    { name: "owner", type: "address" },
+                    { name: "spender", type: "address" },
+                    { name: "value", type: "uint256" },
+                    { name: "nonce", type: "uint256" },
+                    { name: "deadline", type: "uint256" }
+                ]
+            };
+            const message = { owner, spender, value, nonce, deadline: BigInt(deadlineSec) };
+            const signature = await signer.signTypedData(domain, types, message);
+            const sig = ethers.Signature.from(signature);
+            return { v: sig.v, r: sig.r, s: sig.s, nonce: nonce.toString(), deadline: String(deadlineSec) };
+        }
+
+        async function decimals() {
+            if (!cfg) await loadConfig();
+            return Number(cfg.decimals ?? 18);
+        }
+        async function parseUnits(h) { return ethers.parseUnits(String(h), await decimals()); }
+        async function formatUnits(bi) { return ethers.formatUnits(bi, await decimals()); }
+
+        function renderTable(rows) {
+            const tbody = document.querySelector("#statusTable tbody");
+            tbody.innerHTML = "";
+            for (const r of rows) {
+                const tr = document.createElement("tr");
+                const tdAddr = document.createElement("td");
+                tdAddr.innerHTML = `<span class="addr">${r.addr}</span>`;
+                const tdBal = document.createElement("td");
+                tdBal.textContent = r.balanceHuman;
+                const tdAlw = document.createElement("td");
+                tdAlw.textContent = r.allowanceHuman;
+                const tdAct = document.createElement("td");
+                const rm = document.createElement("button");
+                rm.textContent = "Rimuovi";
+                rm.onclick = () => { watchList = watchList.filter(a => a.toLowerCase() !== r.addr.toLowerCase()); refreshStatus(); };
+                tdAct.appendChild(rm);
+
+                tr.appendChild(tdAddr);
+                tr.appendChild(tdBal);
+                tr.appendChild(tdAlw);
+                tr.appendChild(tdAct);
+                tbody.appendChild(tr);
+            }
+        }
+
+        async function refreshStatus() {
+            try {
+                if (!cfg) await loadConfig();
+                await ensureNetwork(cfg.chainId);
+                const eth = getInjectedProvider();
+                const provider = eth ? new ethers.BrowserProvider(eth) : new ethers.JsonRpcProvider();
+                const tokenRead = new ethers.Contract(cfg.token, [
+                    "function allowance(address,address) view returns (uint256)"
+                ], provider);
+
+                const rows = [];
+                for (const addr of watchList) {
+                    const bres = await fetch(api(`/token/${cfg.token}/balance/${addr}`));
+                    const bjson = await bres.json();
+                    const bal = BigInt(bjson.balance);
+                    const alw = await tokenRead.allowance(addr, cfg.adminSpender);
+                    rows.push({
+                        addr,
+                        balanceHuman: await formatUnits(bal),
+                        allowanceHuman: await formatUnits(alw)
+                    });
+                }
+                renderTable(rows);
+            } catch (e) { log(e.message || String(e)); }
+        }
+
+        document.getElementById("addWatch").onclick = () => {
+            const addr = $("watch_addr").value.trim();
+            if (!isAddr(addr)) { log("Indirizzo non valido"); return; }
+            if (!watchList.find(a => a.toLowerCase() === addr.toLowerCase())) {
+                watchList.push(addr);
+            }
+            $("watch_addr").value = "";
+            refreshStatus();
+        };
+        document.getElementById("refreshStatus").onclick = refreshStatus;
+
+        $("createToken").onclick = async () => {
+            try {
+                const payload = {
+                    name: $("new_name").value,
+                    symbol: $("new_symbol").value,
+                    coordinatorOwner: $("new_owner").value,
+                    adminSpender: $("new_admin").value,
+                    factoryAddress: $("factory").value
+                };
+                const r = await fetch(api("/factory/createReteToken"), {
+                    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload)
+                });
+                const data = await r.json();
+                log(data);
+                if (data.token) $("token").value = data.token;
+            } catch (e) { log(e.message || String(e)); }
+        };
+
+        /*$("mintBtn").onclick = async () => {
+            try {
+                const payload = { to: $("mint_to").value, amountHuman: $("mint_amount").value || "0" };
+                const r = await fetch(api(tokenPath("/mint")), {
+                    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload)
+                });
+                log(await r.json());
+                refreshStatus();
+            } catch (e) { log(e.message || String(e)); }
+        };
+
+        $("distribBtn").onclick = async () => {
+            try {
+                const amt = $("per_user").value || "0";
+                const u1 = $("u1").value, u2 = $("u2").value;
+                if (!isAddr(u1) || !isAddr(u2)) { log("Indirizzi non validi"); return; }
+                const r1 = await fetch(api(tokenPath("/transfer")), {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ to: u1, amountHuman: amt })
+                });
+                const d1 = await r1.json();
+                const r2 = await fetch(api(tokenPath("/transfer")), {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ to: u2, amountHuman: amt })
+                });
+                const d2 = await r2.json();
+                log({ user1: d1, user2: d2 });
+                if (!watchList.find(a => a.toLowerCase() === u1.toLowerCase())) watchList.push(u1);
+                if (!watchList.find(a => a.toLowerCase() === u2.toLowerCase())) watchList.push(u2);
+                refreshStatus();
+            } catch (e) { log(e.message || String(e)); }
+        };*/
+
+        async function commonPermitFlow(owner, recipient, humanAmount, endpoint) {
+            if (!cfg) await loadConfig();
+            await connect();
+            const spender = cfg.adminSpender;
+            const value = await parseUnits(humanAmount || "0");
+            const deadline = Math.floor(Date.now() / 1000) + 30 * 60;
+            const { v, r, s, deadline: dl } = await signPermit(owner, spender, value, deadline);
+            const payload = endpoint.endsWith("transfer")
+                ? { owner, spender, value: value.toString(), deadline: dl, v, r, s, recipient }
+                : { owner, spender, value: value.toString(), deadline: dl, v, r, s };
+            const r1 = await fetch(api(tokenPath(endpoint)), {
+                method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload)
+            });
+            const data = await r1.json();
+            log(data);
+            if (!watchList.find(a => a.toLowerCase() === owner.toLowerCase())) watchList.push(owner);
+            if (recipient && !watchList.find(a => a.toLowerCase() === recipient.toLowerCase())) watchList.push(recipient);
+            refreshStatus();
+        }
+        // helper EIP 712 per MintAuthorization
+        async function signMintAuthorization(signerAddr, to, amountWei, deadlineSec) {
+            if (!cfg) await loadConfig();
+            await ensureNetwork(cfg.chainId);
+            const eth = getInjectedProvider();
+            if (!eth) throw new Error("No injected provider");
+            const provider = new ethers.BrowserProvider(eth);
+            const signer = await provider.getSigner();
+            const addr = await signer.getAddress();
+            if (addr.toLowerCase() !== signerAddr.toLowerCase()) {
+                throw new Error("Wallet connesso diverso dal signer");
+            }
+
+            // leggo il nonce on chain
+            const tokenRead = new ethers.Contract(cfg.token, [
+                "function mintNonces(address) view returns (uint256)"
+            ], provider);
+            const nonce = await tokenRead.mintNonces(signerAddr);
+
+            const domain = { name: cfg.name, version: "1", chainId: Number(cfg.chainId), verifyingContract: cfg.token };
+            const types = {
+                MintAuthorization: [
+                    { name: "signer", type: "address" },
+                    { name: "to", type: "address" },
+                    { name: "amount", type: "uint256" },
+                    { name: "nonce", type: "uint256" },
+                    { name: "deadline", type: "uint256" }
+                ]
+            };
+            const message = {
+                signer: signerAddr,
+                to,
+                amount: amountWei,
+                nonce,
+                deadline: BigInt(deadlineSec)
+            };
+
+            const signature = await signer.signTypedData(domain, types, message);
+            const sig = ethers.Signature.from(signature);
+            return { v: sig.v, r: sig.r, s: sig.s, nonce: nonce.toString(), deadline: String(deadlineSec) };
+        }
+
+        // handler bottone
+        document.getElementById("mintWithSigBtn").onclick = async () => {
+            try {
+                if (!cfg) await loadConfig();
+                await connect();
+                const signer = document.getElementById("mws_signer").value;
+                const to = document.getElementById("mws_to").value;
+                const amountHuman = document.getElementById("mws_amount").value || "0";
+                const mins = parseInt(document.getElementById("mws_mins").value || "30", 10);
+                if (!ethers.isAddress(signer) || !ethers.isAddress(to)) { log("Indirizzi non validi"); return; }
+                const amountWei = await parseUnits(amountHuman);
+                const deadline = Math.floor(Date.now() / 1000) + mins * 60;
+
+                const { v, r, s, deadline: dl } = await signMintAuthorization(signer, to, amountWei, deadline);
+
+                const payload = { signer, to, amountHuman, deadline: dl, v, r, s };
+                const r1 = await fetch(api(tokenPath("/mint-with-sig")), {
+                    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload)
+                });
+                const data = await r1.json();
+                log(data);
+                if (!watchList.find(a => a.toLowerCase() === to.toLowerCase())) watchList.push(to);
+                refreshStatus();
+            } catch (e) { log(e.message || String(e)); }
+        };
+        document.getElementById("burnWithSigBtn").onclick = async () => {
+            try {
+                if (!cfg) await loadConfig();
+                await connect();
+
+                const signer = document.getElementById("bws_signer").value;
+                const from = document.getElementById("bws_from").value;
+                const amountHuman = document.getElementById("bws_amount").value || "0";
+                const mins = parseInt(document.getElementById("bws_mins").value || "30", 10);
+
+                if (!ethers.isAddress(signer) || !ethers.isAddress(from)) {
+                    log("Indirizzi non validi");
+                    return;
+                }
+                const amountWei = await parseUnits(amountHuman);
+                const deadline = Math.floor(Date.now() / 1000) + mins * 60;
+
+                const { v, r, s, deadline: dl } = await signBurnAuthorization(signer, from, amountWei, deadline);
+
+                const r1 = await fetch(api(tokenPath("/burn-with-sig")), {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ signer, from, amountHuman, deadline: dl, v, r, s })
+                });
+                const data = await r1.json();
+                log(data);
+
+                if (!watchList.find(a => a.toLowerCase() === from.toLowerCase())) watchList.push(from);
+                await refreshStatus();
+            } catch (e) {
+                log(e.message || String(e));
+            }
+        };
+
+        $("permitUser1").onclick = async () => {
+            try {
+                if (!cfg) await loadConfig();
+                await connect();
+                await commonPermitFlow(currentAccount, $("sp").value, $("sp_amount").value, "/permit-transfer");
+            } catch (e) { log(e.message || String(e)); }
+        };
+
+        $("permitUser2").onclick = async () => {
+            try {
+                if (!cfg) await loadConfig();
+                await connect();
+                await commonPermitFlow(currentAccount, $("sp").value, $("sp_amount").value, "/permit-transfer");
+            } catch (e) { log(e.message || String(e)); }
+        };
+
+        /*$("permitBurn").onclick = async () => {
+            try {
+                if (!cfg) await loadConfig();
+                await connect();
+                const owner = $("burn_owner").value;
+                if (!isAddr(owner)) { log("Owner non valido"); return; }
+                if (currentAccount.toLowerCase() !== owner.toLowerCase()) { log("Connetti il wallet che possiede i token"); return; }
+                await commonPermitFlow(owner, null, $("burn_amount").value, "/permit-burn");
+            } catch (e) { log(e.message || String(e)); }
+        };*/
+
+        $("pauseMint").onclick = async () => {
+            const r = await fetch(api(tokenPath("/set-mint-paused")), {
+                method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ paused: true })
+            });
+            log(await r.json());
+        };
+        $("resumeMint").onclick = async () => {
+            const r = await fetch(api(tokenPath("/set-mint-paused")), {
+                method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ paused: false })
+            });
+            log(await r.json());
+        };
+        $("enableAdminBurn").onclick = async () => {
+            const r = await fetch(api(tokenPath("/toggle-admin-burn")), {
+                method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled: true })
+            });
+            log(await r.json());
+        };
+        $("disableAdminBurn").onclick = async () => {
+            const r = await fetch(api(tokenPath("/toggle-admin-burn")), {
+                method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled: false })
+            });
+            log(await r.json());
+        };
+        $("adminBurnBtn").onclick = async () => {
+            const payload = { from: $("ab_from").value, amountHuman: $("ab_amount").value || "0" };
+            const r = await fetch(api(tokenPath("/admin-burn")), {
+                method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload)
+            });
+            log(await r.json());
+            refreshStatus();
+        };
+        $("adminBatchBurnBtn").onclick = async () => {
+            try {
+                const arr = JSON.parse($("ab_list").value || "[]");
+                const holders = arr.map(x => x.holder);
+                const amountsHuman = arr.map(x => x.amount);
+                const r = await fetch(api(tokenPath("/admin-batch-burn")), {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ holders, amountsHuman })
+                });
+                log(await r.json());
+                for (const h of holders) if (!watchList.find(a => a.toLowerCase() === h.toLowerCase())) watchList.push(h);
+                refreshStatus();
+            } catch (e) { log("JSON non valido"); }
+        };
+        // invia con permit dal coordinatore a un singolo recipient
+        async function coordinatorPermitTo(recipient, humanAmount) {
+            if (!cfg) await loadConfig();
+            await connect();
+            const owner = currentAccount; // deve essere il coordinatore
+            if (!ethers.isAddress(recipient)) { log("Recipient non valido"); return; }
+            await commonPermitFlow(owner, recipient, humanAmount, "/permit-transfer");
+        }
+
+        // invia a entrambi con due permit consecutive
+        async function coordinatorPermitToBoth(u1, u2, humanAmountEach) {
+            await coordinatorPermitTo(u1, humanAmountEach);
+            await coordinatorPermitTo(u2, humanAmountEach);
+        }
+
+        // listeners
+        document.getElementById("cp_send_both").onclick = async () => {
+            try {
+                const u1 = document.getElementById("cp_u1").value;
+                const u2 = document.getElementById("cp_u2").value;
+                const amt = document.getElementById("cp_amount_each").value || "0";
+                await coordinatorPermitToBoth(u1, u2, amt);
+            } catch (e) { log(e.message || String(e)); }
+        };
+
+        document.getElementById("cp_send_u1").onclick = async () => {
+            try {
+                const u1 = document.getElementById("cp_u1").value;
+                const amt = document.getElementById("cp_amount_each").value || "0";
+                await coordinatorPermitTo(u1, amt);
+            } catch (e) { log(e.message || String(e)); }
+        };
+
+        document.getElementById("cp_send_u2").onclick = async () => {
+            try {
+                const u2 = document.getElementById("cp_u2").value;
+                const amt = document.getElementById("cp_amount_each").value || "0";
+                await coordinatorPermitTo(u2, amt);
+            } catch (e) { log(e.message || String(e)); }
+        };
+
+        document.getElementById("connect").onclick = connect;
+        document.getElementById("loadConfig").onclick = loadConfig;
+        document.getElementById("refreshStatus").onclick = refreshStatus;
+    </script>
+</body>
+
+</html>
