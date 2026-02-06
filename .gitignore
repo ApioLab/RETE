@@ -7,3 +7,6 @@ vite.config.ts.*
 .replit
 replit.md
 .local/
+.env
+.env.local
+.env.*.local
