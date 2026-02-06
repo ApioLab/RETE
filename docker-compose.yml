@@ -3,9 +3,9 @@
 #
 # Usage:
 #   cp .env.example .env    # Configure environment variables
-#   docker-compose up -d    # Start all services
-#   docker-compose logs -f  # View logs
-#   docker-compose down     # Stop all services
+#   docker compose up -d    # Start all services
+#   docker compose logs -f  # View logs
+#   docker compose down     # Stop all services
 # ══════════════════════════════════════════════════════════════════════════════
 
 services:

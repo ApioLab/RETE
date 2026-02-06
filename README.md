@@ -124,10 +124,10 @@ cp .env.example .env
 #    - FACTORY_ADDRESS (deployed ReteTokenFactory address)
 
 # 3. Start all services
-docker-compose up -d
+docker compose up -d
 
 # 4. View logs
-docker-compose logs -f app
+docker compose logs -f app
 
 # 5. Access the application
 open http://localhost:5000
@@ -144,20 +144,20 @@ open http://localhost:5000
 
 ```bash
 # Start services
-docker-compose up -d
+docker compose up -d
 
 # Stop services
-docker-compose down
+docker compose down
 
 # Rebuild after code changes
-docker-compose up -d --build
+docker compose up -d --build
 
 # View logs
-docker-compose logs -f
+docker compose logs -f
 
 # Reset database (removes all data)
-docker-compose down -v
-docker-compose up -d
+docker compose down -v
+docker compose up -d
 ```
 
 ### Production Considerations
@@ -206,8 +206,8 @@ For production deployments:
 | `npm run start` | Run production build |
 | `npm run check` | TypeScript type checking |
 | `npm run db:push` | Push schema changes to database |
-| `docker-compose up -d` | Start with Docker (recommended) |
-| `docker-compose down` | Stop Docker services |
+| `docker compose up -d` | Start with Docker (recommended) |
+| `docker compose down` | Stop Docker services |
 
 ## Acknowledgements
 
