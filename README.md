@@ -107,6 +107,124 @@ npm run build
 npm run start
 ```
 
+## Smart Contract Deployment
+
+Before running RETE, you need to deploy the `ReteTokenFactory` contract to your chosen blockchain. The factory allows each community coordinator to create their own ERC-20 token.
+
+### Prerequisites
+
+- [Foundry](https://book.getfoundry.sh/getting-started/installation) or [Hardhat](https://hardhat.org/getting-started/)
+- An Ethereum wallet with funds for gas (e.g., Sepolia ETH for testnet)
+- An RPC endpoint (e.g., from [Infura](https://infura.io/) or [Alchemy](https://www.alchemy.com/))
+
+### Contract Overview
+
+| Contract | Description |
+|----------|-------------|
+| `ReteTokenFactory.sol` | Factory that creates community tokens. Deploy this once per chain. |
+| `ReteToken.sol` | ERC-20 token with EIP-2612 permit, gasless mint/burn via EIP-712 signatures. Created by the factory for each community. |
+
+### Deploy with Foundry
+
+```bash
+# 1. Install Foundry (if not installed)
+curl -L https://foundry.paradigm.xyz | bash
+foundryup
+
+# 2. Navigate to contracts directory
+cd contracts
+
+# 3. Install OpenZeppelin dependencies
+forge install OpenZeppelin/openzeppelin-contracts
+
+# 4. Compile contracts
+forge build
+
+# 5. Deploy ReteTokenFactory to Sepolia
+forge create --rpc-url https://sepolia.infura.io/v3/YOUR_INFURA_KEY \
+  --private-key YOUR_PRIVATE_KEY \
+  src/ReteTokenFactory.sol:ReteTokenFactory
+
+# Save the deployed contract address for FACTORY_ADDRESS in .env
+```
+
+### Deploy with Hardhat
+
+```bash
+# 1. Initialize Hardhat project
+cd contracts
+npm init -y
+npm install --save-dev hardhat @nomicfoundation/hardhat-toolbox
+npx hardhat init
+
+# 2. Install OpenZeppelin
+npm install @openzeppelin/contracts
+
+# 3. Create deployment script (scripts/deploy.js)
+cat > scripts/deploy.js << 'EOF'
+const hre = require("hardhat");
+
+async function main() {
+  const Factory = await hre.ethers.getContractFactory("ReteTokenFactory");
+  const factory = await Factory.deploy();
+  await factory.waitForDeployment();
+  console.log("ReteTokenFactory deployed to:", await factory.getAddress());
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
+EOF
+
+# 4. Configure hardhat.config.js with your network settings
+
+# 5. Deploy
+npx hardhat run scripts/deploy.js --network sepolia
+```
+
+### Deploy with Remix (Browser-based)
+
+1. Go to [Remix IDE](https://remix.ethereum.org/)
+2. Create new files and paste the contract code:
+   - `ReteToken.sol`
+   - `ReteTokenFactory.sol`
+3. In the "Solidity Compiler" tab, compile `ReteTokenFactory.sol`
+4. In the "Deploy & Run" tab:
+   - Set Environment to "Injected Provider - MetaMask"
+   - Select `ReteTokenFactory`
+   - Click "Deploy" and confirm in MetaMask
+5. Copy the deployed contract address
+
+### After Deployment
+
+Once `ReteTokenFactory` is deployed, configure your `.env` file:
+
+```env
+# The deployed factory contract address
+FACTORY_ADDRESS=0x1234...your_factory_address
+
+# Your admin wallet private key (will pay for gas)
+PRIVATE_KEY=your_private_key_without_0x
+
+# RPC URL for blockchain connection
+RPC_URL=https://sepolia.infura.io/v3/YOUR_INFURA_KEY
+
+# Chain ID (11155111 for Sepolia)
+CHAIN_ID=11155111
+```
+
+The RETE application will use the factory to create individual tokens for each community when a coordinator sets up their community.
+
+### Supported Networks
+
+| Network | Chain ID | RPC Example |
+|---------|----------|-------------|
+| Ethereum Mainnet | 1 | `https://mainnet.infura.io/v3/KEY` |
+| Sepolia Testnet | 11155111 | `https://sepolia.infura.io/v3/KEY` |
+| Polygon | 137 | `https://polygon-rpc.com` |
+| Arbitrum One | 42161 | `https://arb1.arbitrum.io/rpc` |
+
 ## Docker Deployment
 
 The easiest way to run RETE is using Docker Compose, which handles all dependencies automatically.
@@ -188,6 +306,9 @@ For production deployments:
 │   ├── blockchain.ts       # Blockchain interaction logic
 │   ├── websocket.ts        # WebSocket event handling
 │   └── vite.ts             # Vite dev server integration
+├── contracts/              # Solidity smart contracts
+│   ├── ReteToken.sol       # ERC-20 token with permit and gasless operations
+│   └── ReteTokenFactory.sol # Factory for deploying community tokens
 ├── shared/
 │   └── schema.ts           # Database schema (Drizzle ORM) and Zod validators
 ├── script/
