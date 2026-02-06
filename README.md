@@ -107,6 +107,69 @@ npm run build
 npm run start
 ```
 
+## Docker Deployment
+
+The easiest way to run RETE is using Docker Compose, which handles all dependencies automatically.
+
+### Quick Start with Docker
+
+```bash
+# 1. Copy the environment template
+cp .env.example .env
+
+# 2. Edit .env and configure at minimum:
+#    - SESSION_SECRET (change for production)
+#    - PRIVATE_KEY (your admin wallet private key)
+#    - RPC_URL (your blockchain RPC endpoint)
+#    - FACTORY_ADDRESS (deployed ReteTokenFactory address)
+
+# 3. Start all services
+docker-compose up -d
+
+# 4. View logs
+docker-compose logs -f app
+
+# 5. Access the application
+open http://localhost:5000
+```
+
+### Docker Services
+
+| Service | Description | Port |
+|---------|-------------|------|
+| `app` | RETE application | 5000 |
+| `db` | PostgreSQL database | 5432 |
+
+### Docker Commands
+
+```bash
+# Start services
+docker-compose up -d
+
+# Stop services
+docker-compose down
+
+# Rebuild after code changes
+docker-compose up -d --build
+
+# View logs
+docker-compose logs -f
+
+# Reset database (removes all data)
+docker-compose down -v
+docker-compose up -d
+```
+
+### Production Considerations
+
+For production deployments:
+
+1. **Change default passwords** in `.env`
+2. **Use a strong SESSION_SECRET** (generate with `openssl rand -base64 32`)
+3. **Configure proper blockchain credentials** (PRIVATE_KEY, RPC_URL, FACTORY_ADDRESS)
+4. **Set up a reverse proxy** (nginx, Traefik) with HTTPS
+5. **Configure backup** for the PostgreSQL volume
+
 ## Project Structure
 
 ```
@@ -143,6 +206,8 @@ npm run start
 | `npm run start` | Run production build |
 | `npm run check` | TypeScript type checking |
 | `npm run db:push` | Push schema changes to database |
+| `docker-compose up -d` | Start with Docker (recommended) |
+| `docker-compose down` | Stop Docker services |
 
 ## Acknowledgements
 

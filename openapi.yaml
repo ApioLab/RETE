@@ -1,0 +1,1745 @@
+openapi: 3.0.3
+info:
+  title: RETE API
+  description: |
+    REST API for the RETE (Renewable Energy Token Economy) platform.
+    Manages authentication, community operations, token distribution, marketplace,
+    wallet management, and blockchain interactions for Renewable Energy Communities.
+  version: 1.0.0
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+  contact:
+    name: Apio S.r.l.
+    url: https://www.apio.cc
+
+servers:
+  - url: http://localhost:5000
+    description: Development server
+
+tags:
+  - name: Auth
+    description: Authentication and session management
+  - name: Community
+    description: Community management and statistics
+  - name: Tokens
+    description: Token distribution, burn, and transfer operations
+  - name: Products
+    description: Marketplace product management
+  - name: Purchase
+    description: Marketplace purchases
+  - name: Transactions
+    description: Transaction history
+  - name: Wallets
+    description: Wallet management and export
+  - name: Blockchain
+    description: Low-level blockchain operations and configuration
+  - name: Chain Profiles
+    description: Multi-chain profile management
+
+paths:
+  # ── Auth ────────────────────────────────────────────────────────────
+  /api/auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new user
+      description: |
+        Creates a new account. Coordinators automatically create a community.
+        Users must have a pending invite from a coordinator.
+        Providers are created without a community association.
+        A custodial wallet is generated server-side for every new user.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, name, role]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  minLength: 6
+                name:
+                  type: string
+                role:
+                  $ref: '#/components/schemas/UserRole'
+                communityName:
+                  type: string
+                  description: Required when role is coordinator
+                communityId:
+                  type: string
+                  description: Optional community ID
+      responses:
+        '200':
+          description: Registration successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/UserPublic'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          description: User role requires an invite
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: Log in
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  minLength: 6
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/UserPublic'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Log out
+      responses:
+        '200':
+          description: Logout successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/auth/me:
+    get:
+      tags: [Auth]
+      summary: Get current authenticated user
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: Current user
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/UserPublic'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/invites/check:
+    get:
+      tags: [Auth]
+      summary: Check if an email has a pending invite
+      parameters:
+        - name: email
+          in: query
+          required: true
+          schema:
+            type: string
+            format: email
+      responses:
+        '200':
+          description: Invite check result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  hasInvite:
+                    type: boolean
+                  communityId:
+                    type: string
+                  communityName:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  # ── Community ───────────────────────────────────────────────────────
+  /api/communities:
+    get:
+      tags: [Community]
+      summary: List all communities
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: List of communities
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Community'
+
+  /api/communities/{id}:
+    get:
+      tags: [Community]
+      summary: Get a community by ID
+      security:
+        - sessionAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '200':
+          description: Community details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Community'
+        '404':
+          description: Community not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/communities/{id}/users:
+    get:
+      tags: [Community]
+      summary: Get users of a specific community
+      description: The authenticated user must belong to the requested community.
+      security:
+        - sessionAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '200':
+          description: List of community members
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UserPublic'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/community/stats:
+    get:
+      tags: [Community]
+      summary: Get community statistics
+      description: Returns stats for the authenticated user's community.
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: Community statistics
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Community statistics (members, transactions, etc.)
+        '400':
+          description: No associated community
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/community/users:
+    get:
+      tags: [Community]
+      summary: Get users in the coordinator's community
+      description: Coordinator-only endpoint.
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: List of community members
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UserPublic'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/community/balances:
+    get:
+      tags: [Community]
+      summary: Get token balances for all community members
+      description: Coordinator-only endpoint.
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: List of user balances
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                    name:
+                      type: string
+                    email:
+                      type: string
+                    role:
+                      $ref: '#/components/schemas/UserRole'
+                    ethAddress:
+                      type: string
+                    tokenBalance:
+                      type: integer
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # ── Token Operations ────────────────────────────────────────────────
+  /api/tokens/distribute:
+    post:
+      tags: [Tokens]
+      summary: Distribute tokens to community members
+      description: |
+        Coordinator-only. Mints tokens on-chain via EIP-712 signed authorization
+        and credits each recipient's balance. Supports batch distribution.
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [distributions]
+              properties:
+                distributions:
+                  type: array
+                  items:
+                    type: object
+                    required: [email, amount]
+                    properties:
+                      email:
+                        type: string
+                        format: email
+                      amount:
+                        type: number
+                        minimum: 0
+                        exclusiveMinimum: true
+      responses:
+        '200':
+          description: Distribution results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  distributed:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        email:
+                          type: string
+                        amount:
+                          type: number
+                        userName:
+                          type: string
+                        txHash:
+                          type: string
+                  errors:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        email:
+                          type: string
+                        error:
+                          type: string
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/tokens/burn:
+    post:
+      tags: [Tokens]
+      summary: Burn tokens from a user's balance
+      description: |
+        Coordinator-only. Burns tokens on-chain via EIP-712 signed authorization.
+        Can burn from the coordinator's own balance or from a target user.
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount]
+              properties:
+                amount:
+                  type: number
+                  minimum: 0
+                  exclusiveMinimum: true
+                description:
+                  type: string
+                targetUserId:
+                  type: string
+                  description: If omitted, burns from the coordinator's own balance
+      responses:
+        '200':
+          description: Burn result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  burned:
+                    type: number
+                  txHash:
+                    type: string
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/tokens/burn-all:
+    post:
+      tags: [Tokens]
+      summary: Burn all tokens in the community
+      description: |
+        Coordinator-only. Iterates over every member with a positive balance
+        and burns their tokens on-chain. Used for periodic reset cycles.
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: Burn-all results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalBurned:
+                    type: number
+                  usersAffected:
+                    type: integer
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        amount:
+                          type: number
+                        txHash:
+                          type: string
+                  errors:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        error:
+                          type: string
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/tokens/transfer:
+    post:
+      tags: [Tokens]
+      summary: Transfer tokens to another user
+      description: |
+        Uses ERC-2612 permit + transferFrom to move tokens on-chain
+        without requiring the sender to hold native gas tokens.
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [recipientId, amount]
+              properties:
+                recipientId:
+                  type: string
+                amount:
+                  type: number
+                  minimum: 0
+                  exclusiveMinimum: true
+                note:
+                  type: string
+      responses:
+        '200':
+          description: Transfer result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  transferred:
+                    type: number
+                  txHash:
+                    type: string
+                  to:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  # ── Invites ─────────────────────────────────────────────────────────
+  /api/users/invite:
+    post:
+      tags: [Community]
+      summary: Invite a user to the community
+      description: Coordinator-only. Creates an invite for the given email.
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+      responses:
+        '200':
+          description: Invite sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # ── Provider ────────────────────────────────────────────────────────
+  /api/provider/balances:
+    get:
+      tags: [Tokens]
+      summary: Get provider token balances by community
+      description: Provider-only. Returns the provider's balances across communities.
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: Provider balances
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # ── Products ────────────────────────────────────────────────────────
+  /api/products:
+    get:
+      tags: [Products]
+      summary: List products available in the user's community
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: List of products
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Product'
+
+    post:
+      tags: [Products]
+      summary: Create a new product
+      description: Provider-only. Creates a product available in one or more communities.
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, price, category, communityIds]
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                price:
+                  type: integer
+                  minimum: 1
+                category:
+                  type: string
+                imageUrl:
+                  type: string
+                  nullable: true
+                available:
+                  type: boolean
+                  default: true
+                communityIds:
+                  type: array
+                  items:
+                    type: string
+                  minItems: 1
+      responses:
+        '200':
+          description: Created product
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductWithCommunities'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/products/mine:
+    get:
+      tags: [Products]
+      summary: List the authenticated provider's products
+      description: Provider-only.
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: List of provider's products
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProductWithCommunities'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/products/{id}:
+    put:
+      tags: [Products]
+      summary: Update a product
+      description: Provider-only. Only the product owner can update.
+      security:
+        - sessionAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                price:
+                  type: integer
+                category:
+                  type: string
+                imageUrl:
+                  type: string
+                  nullable: true
+                available:
+                  type: boolean
+                communityIds:
+                  type: array
+                  items:
+                    type: string
+                  minItems: 1
+      responses:
+        '200':
+          description: Updated product
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductWithCommunities'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Product not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      tags: [Products]
+      summary: Delete a product
+      description: Provider-only. Only the product owner can delete.
+      security:
+        - sessionAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '200':
+          description: Deletion successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Product not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ── Purchase ────────────────────────────────────────────────────────
+  /api/purchase:
+    post:
+      tags: [Purchase]
+      summary: Purchase a product from the marketplace
+      description: |
+        Executes an on-chain permit + transferFrom to pay the provider,
+        then updates local balances and records the transaction.
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [productId]
+              properties:
+                productId:
+                  type: string
+      responses:
+        '200':
+          description: Purchase successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  newBalance:
+                    type: integer
+                  product:
+                    type: string
+                  txHash:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          description: Product not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ── Transactions ────────────────────────────────────────────────────
+  /api/transactions:
+    get:
+      tags: [Transactions]
+      summary: Get the authenticated user's transactions
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: List of transactions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Transaction'
+
+  /api/transactions/community:
+    get:
+      tags: [Transactions]
+      summary: Get all transactions in the coordinator's community
+      description: Coordinator-only.
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: List of community transactions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Transaction'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # ── Wallets ─────────────────────────────────────────────────────────
+  /api/wallets:
+    get:
+      tags: [Wallets]
+      summary: Get the authenticated user's wallets
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: List of wallets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WalletPublic'
+
+  /api/wallets/generate:
+    post:
+      tags: [Wallets]
+      summary: Generate a new custodial wallet
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [label]
+              properties:
+                label:
+                  type: string
+                walletType:
+                  $ref: '#/components/schemas/WalletType'
+      responses:
+        '200':
+          description: Generated wallet
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WalletPublic'
+
+  /api/wallets/import:
+    post:
+      tags: [Wallets]
+      summary: Import an existing wallet by private key
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [label, privateKey]
+              properties:
+                label:
+                  type: string
+                privateKey:
+                  type: string
+                walletType:
+                  $ref: '#/components/schemas/WalletType'
+      responses:
+        '200':
+          description: Imported wallet
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WalletPublic'
+
+  /api/wallets/{id}/set-default:
+    post:
+      tags: [Wallets]
+      summary: Set a wallet as default
+      security:
+        - sessionAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '200':
+          description: Default wallet updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        '404':
+          description: Wallet not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/wallets/{id}/export-keystore:
+    post:
+      tags: [Wallets]
+      summary: Export wallet as encrypted keystore (JSON)
+      description: Requires account password verification and a separate keystore password.
+      security:
+        - sessionAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password, keystorePassword]
+              properties:
+                password:
+                  type: string
+                  description: Account password for verification
+                keystorePassword:
+                  type: string
+                  minLength: 8
+                  description: Password to encrypt the keystore file
+      responses:
+        '200':
+          description: Keystore JSON
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  keystore:
+                    type: object
+                    description: Encrypted keystore JSON (Web3 Secret Storage format)
+                  address:
+                    type: string
+                  label:
+                    type: string
+        '401':
+          description: Invalid account password
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/wallets/{id}:
+    delete:
+      tags: [Wallets]
+      summary: Delete a wallet
+      security:
+        - sessionAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '200':
+          description: Wallet deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        '404':
+          description: Wallet not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ── Blockchain ──────────────────────────────────────────────────────
+  /api/blockchain/config:
+    get:
+      tags: [Blockchain]
+      summary: Get token configuration
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: token
+          in: query
+          schema:
+            type: string
+          description: Optional token contract address
+      responses:
+        '200':
+          description: Token configuration
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  symbol:
+                    type: string
+                  decimals:
+                    type: integer
+                  address:
+                    type: string
+
+  /api/blockchain/balance/{address}:
+    get:
+      tags: [Blockchain]
+      summary: Get on-chain token balance for an address
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: address
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Ethereum address
+        - name: token
+          in: query
+          schema:
+            type: string
+          description: Optional token contract address
+      responses:
+        '200':
+          description: On-chain balance
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  address:
+                    type: string
+                  balance:
+                    type: string
+
+  /api/blockchain/admin-wallet:
+    get:
+      tags: [Blockchain]
+      summary: Get the platform admin wallet address
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: Admin wallet address
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  address:
+                    type: string
+
+  /api/blockchain/mint:
+    post:
+      tags: [Blockchain]
+      summary: Mint tokens directly (coordinator only)
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [to, amount]
+              properties:
+                to:
+                  type: string
+                  description: Recipient Ethereum address
+                amount:
+                  type: number
+                tokenAddress:
+                  type: string
+      responses:
+        '200':
+          description: Mint result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tx:
+                    type: string
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/blockchain/mint-with-sig:
+    post:
+      tags: [Blockchain]
+      summary: Mint tokens with EIP-712 signature
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignedOperationRequest'
+      responses:
+        '200':
+          description: Mint result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tx:
+                    type: string
+
+  /api/blockchain/burn-with-sig:
+    post:
+      tags: [Blockchain]
+      summary: Burn tokens with EIP-712 signature
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [signer, from, amount, deadline, v, r, s]
+              properties:
+                signer:
+                  type: string
+                from:
+                  type: string
+                amount:
+                  type: number
+                deadline:
+                  type: integer
+                v:
+                  type: integer
+                r:
+                  type: string
+                s:
+                  type: string
+                tokenAddress:
+                  type: string
+      responses:
+        '200':
+          description: Burn result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tx:
+                    type: string
+
+  /api/blockchain/sign-mint:
+    post:
+      tags: [Blockchain]
+      summary: Sign a mint authorization using a custodial wallet
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [walletId, to, amount]
+              properties:
+                walletId:
+                  type: string
+                to:
+                  type: string
+                amount:
+                  type: number
+                deadlineMinutes:
+                  type: integer
+                  default: 30
+                tokenAddress:
+                  type: string
+      responses:
+        '200':
+          description: Signed mint authorization
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  signer:
+                    type: string
+                  to:
+                    type: string
+                  amount:
+                    type: number
+                  deadline:
+                    type: integer
+                  v:
+                    type: integer
+                  r:
+                    type: string
+                  s:
+                    type: string
+
+  /api/blockchain/sign-burn:
+    post:
+      tags: [Blockchain]
+      summary: Sign a burn authorization using a custodial wallet
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [walletId, from, amount]
+              properties:
+                walletId:
+                  type: string
+                from:
+                  type: string
+                amount:
+                  type: number
+                deadlineMinutes:
+                  type: integer
+                  default: 30
+                tokenAddress:
+                  type: string
+      responses:
+        '200':
+          description: Signed burn authorization
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  signer:
+                    type: string
+                  from:
+                    type: string
+                  amount:
+                    type: number
+                  deadline:
+                    type: integer
+                  v:
+                    type: integer
+                  r:
+                    type: string
+                  s:
+                    type: string
+
+  /api/blockchain/factory/create-token:
+    post:
+      tags: [Blockchain]
+      summary: Deploy a new ERC-20 token for the community
+      description: |
+        Coordinator-only. Calls the ReteTokenFactory contract to deploy
+        a new ReteToken instance. The community can only have one token.
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: Token deployment result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                    description: Deployed token contract address
+                  tx:
+                    type: string
+                    description: Deployment transaction hash
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/blockchain/factory/tokens:
+    get:
+      tags: [Blockchain]
+      summary: List all tokens created by the factory
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: factoryAddress
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of token addresses
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tokens:
+                    type: array
+                    items:
+                      type: string
+
+  /api/blockchain/factory/tokens/{coordinator}:
+    get:
+      tags: [Blockchain]
+      summary: List tokens created by a specific coordinator
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: coordinator
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Coordinator Ethereum address
+        - name: factoryAddress
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Coordinator's tokens
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  coordinator:
+                    type: string
+                  tokens:
+                    type: array
+                    items:
+                      type: string
+
+  # ── Chain Profiles ──────────────────────────────────────────────────
+  /api/chain-profiles:
+    get:
+      tags: [Chain Profiles]
+      summary: List active chain profiles
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: List of chain profiles
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ChainProfile'
+
+  /api/chain-profiles/{id}:
+    get:
+      tags: [Chain Profiles]
+      summary: Get a chain profile by ID
+      security:
+        - sessionAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '200':
+          description: Chain profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChainProfile'
+        '404':
+          description: Chain profile not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/community/chain-profile:
+    post:
+      tags: [Chain Profiles]
+      summary: Switch the community's chain profile
+      description: |
+        Coordinator-only. Switching chain resets the token address,
+        requiring a new token to be created on the new chain.
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [chainProfileId]
+              properties:
+                chainProfileId:
+                  type: string
+      responses:
+        '200':
+          description: Chain profile updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  community:
+                    $ref: '#/components/schemas/Community'
+                  chainProfile:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      name:
+                        type: string
+                      chainId:
+                        type: integer
+                      explorerUrl:
+                        type: string
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/community/reset-token:
+    post:
+      tags: [Chain Profiles]
+      summary: Reset the community's token address
+      description: Coordinator-only. Clears the token address so a new one can be deployed.
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: Token reset
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  community:
+                    $ref: '#/components/schemas/Community'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/community/chain-info:
+    get:
+      tags: [Chain Profiles]
+      summary: Get the community's current chain configuration
+      description: Coordinator-only.
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: Community chain info
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  communityId:
+                    type: string
+                  communityName:
+                    type: string
+                  tokenAddress:
+                    type: string
+                    nullable: true
+                  chainProfile:
+                    type: object
+                    nullable: true
+                    properties:
+                      id:
+                        type: string
+                      name:
+                        type: string
+                      chainId:
+                        type: integer
+                      explorerUrl:
+                        type: string
+                      factoryAddress:
+                        type: string
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+# ══════════════════════════════════════════════════════════════════════
+components:
+  securitySchemes:
+    sessionAuth:
+      type: apiKey
+      in: cookie
+      name: connect.sid
+      description: Session cookie set after login
+
+  parameters:
+    ResourceId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: object
+
+    UserRole:
+      type: string
+      enum: [coordinator, provider, user]
+
+    WalletType:
+      type: string
+      enum: [admin, coordinator, user]
+
+    UserPublic:
+      type: object
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        role:
+          $ref: '#/components/schemas/UserRole'
+        ethAddress:
+          type: string
+        tokenBalance:
+          type: integer
+        communityId:
+          type: string
+          nullable: true
+
+    Community:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        tokenAddress:
+          type: string
+          nullable: true
+        chainProfileId:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    Product:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        price:
+          type: integer
+        category:
+          type: string
+        imageUrl:
+          type: string
+          nullable: true
+        providerId:
+          type: string
+        communityId:
+          type: string
+          nullable: true
+        isAvailable:
+          type: integer
+          enum: [0, 1]
+        createdAt:
+          type: string
+          format: date-time
+
+    ProductWithCommunities:
+      allOf:
+        - $ref: '#/components/schemas/Product'
+        - type: object
+          properties:
+            available:
+              type: boolean
+            providerName:
+              type: string
+            communityIds:
+              type: array
+              items:
+                type: string
+
+    Transaction:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [send, receive, purchase, burn]
+        amount:
+          type: integer
+        description:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [pending, completed, failed]
+        fromUserId:
+          type: string
+          nullable: true
+        toUserId:
+          type: string
+          nullable: true
+        productId:
+          type: string
+          nullable: true
+        communityId:
+          type: string
+          nullable: true
+        txHash:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        fromUserName:
+          type: string
+          description: Populated by join query
+        toUserName:
+          type: string
+          description: Populated by join query
+
+    WalletPublic:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        address:
+          type: string
+        walletType:
+          $ref: '#/components/schemas/WalletType'
+        isDefault:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+
+    ChainProfile:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        chainId:
+          type: integer
+        rpcUrl:
+          type: string
+        explorerUrl:
+          type: string
+        factoryAddress:
+          type: string
+        isActive:
+          type: integer
+          enum: [0, 1]
+        createdAt:
+          type: string
+          format: date-time
+
+    SignedOperationRequest:
+      type: object
+      required: [signer, to, amount, deadline, v, r, s]
+      properties:
+        signer:
+          type: string
+          description: Address of the coordinator who signed the authorization
+        to:
+          type: string
+          description: Recipient Ethereum address
+        amount:
+          type: number
+        deadline:
+          type: integer
+          description: Unix timestamp (max 1 hour from now)
+        v:
+          type: integer
+        r:
+          type: string
+        s:
+          type: string
+        tokenAddress:
+          type: string
+
+  responses:
+    BadRequest:
+      description: Invalid request parameters
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

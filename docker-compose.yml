@@ -1,0 +1,74 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# RETE - Docker Compose Configuration
+#
+# Usage:
+#   cp .env.example .env    # Configure environment variables
+#   docker-compose up -d    # Start all services
+#   docker-compose logs -f  # View logs
+#   docker-compose down     # Stop all services
+# ══════════════════════════════════════════════════════════════════════════════
+
+services:
+  # ── PostgreSQL Database ─────────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: rete-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-rete}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rete_password}
+      POSTGRES_DB: ${POSTGRES_DB:-rete}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-rete} -d ${POSTGRES_DB:-rete}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - rete-network
+
+  # ── RETE Application ────────────────────────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rete-app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # Database
+      DATABASE_URL: postgresql://${POSTGRES_USER:-rete}:${POSTGRES_PASSWORD:-rete_password}@db:5432/${POSTGRES_DB:-rete}
+
+      # Application
+      NODE_ENV: production
+      PORT: 5000
+      SESSION_SECRET: ${SESSION_SECRET:-change-me-in-production}
+
+      # Blockchain Configuration (Sepolia Testnet by default)
+      PRIVATE_KEY: ${PRIVATE_KEY:-}
+      RPC_URL: ${RPC_URL:-https://sepolia.infura.io/v3/YOUR_INFURA_KEY}
+      FACTORY_ADDRESS: ${FACTORY_ADDRESS:-}
+      CHAIN_ID: ${CHAIN_ID:-11155111}
+    ports:
+      - "${APP_PORT:-5000}:5000"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5000/api/auth/me"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+    networks:
+      - rete-network
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  rete-network:
+    driver: bridge
